@@ -1,135 +1,96 @@
--- COVID 19 DATA ANALYST PROJECT
+-- COVID 19 DATA ANALYSIS PROJECT
 -- BY EMMANUEL NDIVHUWO MASINDI
 -- DATE 27 SEPTEMBER 2021
 
--- BY EMMANUEL NDIVHUWO MASINDI
--- DATE 27 SEPTEMBER 2021
+-- In this SQL script we will go through SQL statements which will generate summaries/views for the main table in the database. 
+-- Summarized data can be found under the 'Summaries' folder of this project.
 
--- IMPORT DATASET
+-- TABLE A1 - Figure showing Head of Main Table in db 'owid_covid_table'
+SELECT * FROM owid_covid_table
+LIMIT 5
 
+-- TABLE A2 - Figure showing Total Cases, Total Deaths, Case Fatality Rate, Population Infection and Death Rate from Top 20 Countries
+-- This table is ordered based on the total_case numbers for each country. Note the differences in case fatality rates and population infection rates.
+-- What country characteristics lead to the differences in the way the pandemic affected their respective populations?
+-- Notice the conditional clause 'WHERE continent != 0'. Locations where continent = 0 are not recorded as countries.
+SELECT location, max(date) as latest_date, 
+sum(new_cases) as cases, 
+sum(new_deaths) as deaths, 
+ROUND(100 * sum(new_deaths) * sum(new_cases)^(-1),2) as case_fatality_rate,
+ROUND(100*sum(new_cases) * max(population)^(-1),1) as population_infection_rate,
+ROUND(100*sum(new_deaths) * max(population)^(-1),2) as population_death_rate
+FROM owid_covid_table
+WHERE continent != '0' AND total_cases > 0
+GROUP BY location 
+ORDER BY 3 DESC
+LIMIT 20
 
-CREATE TABLE covid_data(
-iso_code VARCHAR(50),
-continent VARCHAR(50),
-location VARCHAR(150),
-date DATE,
-total_cases BIGINT,
-new_cases INTEGER,
-total_deaths BIGINT,
-new_deaths INTEGER,
-icu_patients BIGINT,
-hosp_patients BIGINT,
-weekly_icu_admissions NUMERIC,
-weekly_hosp_admissions NUMERIC,
-new_tests INTEGER,
-total_tests BIGINT,
-total_vaccinations BIGINT,
-people_vaccinated BIGINT,
-people_fully_vaccinated BIGINT,
-total_boosters BIGINT,
-new_vaccinations BIGINT,
-population BIGINT,
-population_density NUMERIC,
-median_age NUMERIC,
-aged_65_older NUMERIC,
-aged_70_older NUMERIC,
-gdp_per_capita NUMERIC,
-handwashing_facilities NUMERIC,
-life_expectancy NUMERIC
-)
-
-
-SELECT * FROM covid_data
-
--- DATA EXPLORATION
--- TOTAL CASES AND DEATHS OVER TIME
-
-SELECT continent, location, date, total_cases, total_deaths FROM covid_data
-WHERE continent IS NOT null AND location ILIKE '%south af%'
-ORDER BY 2,3
-
--- DETERMINE CASE FATALITY RATE (RECORDED_CASES/DEATHS)
-
-SELECT continent, location, date, total_cases, total_deaths, 100 * (total_deaths) * (total_cases)^(-1) as case_fatality_rate
-FROM covid_data
-WHERE continent IS NOT null --AND location ILIKE '%south af%'
-ORDER BY 2,3
-
--- COUNTRY PERCENTAGE OF POPULATION INFECTED PER COUNTRY
-
-SELECT location, MAX(total_cases) AS total_cases , MAX(100*total_cases * population^(-1)) AS population_infection_rate FROM covid_data
-WHERE continent IS NOT null
-GROUP BY location, population
-HAVING MAX(total_cases) IS NOT null
-ORDER BY population_infection_rate DESC
-
--- COUNTRY PERCENTAGE DEATHS PER POPULATION
-
-SELECT location, MAX(total_deaths) AS total_deaths , MAX(100*total_deaths * population^(-1)) AS population_death_rate FROM covid_data
-WHERE continent IS NOT null
-GROUP BY location, population
-HAVING MAX(total_deaths) IS NOT null
-ORDER BY population_death_rate DESC
-
---TOTAL CASES AND DEATHS
-
-SELECT SUM(new_deaths) AS total_deaths , SUM(new_cases) AS total_cases, SUM(new_vaccinations) as total_vaccinations FROM covid_data
-WHERE continent IS NOT null
-
--- CONTINENT PERCENTAGE DEATHS PER POPULATION 
-
-SELECT continent, MAX(total_deaths) AS total_cases , MAX(100*total_deaths * population^(-1)) AS population_death_rate FROM covid_data
-WHERE continent IS NOT null
+-- TABLE A3 - Figure showing Total Cases, Total Deaths, Case Fatality Rate, Population Infection and Death Rate by Continent
+-- The populations from Europe recorded the highest infection rates reaching above 50 % population infection rate.
+-- Asian and African countries were least affected by both infections and deaths.
+SELECT continent, max(date) as latest_date, 
+sum(new_cases) as cases, 
+sum(new_deaths) as deaths, 
+ROUND(100 * sum(new_deaths) * sum(new_cases)^(-1),2) as case_fatality_rate,
+max(population) as population,
+ROUND(100*sum(new_cases) * max(population)^(-1),1) as population_infection_rate,
+ROUND(100*sum(new_deaths) * max(population)^(-1),2) as population_death_rate
+FROM owid_covid_table
+WHERE continent != '0' AND total_cases > 0
 GROUP BY continent
-HAVING MAX(total_deaths) IS NOT null
-ORDER BY population_death_rate DESC
+ORDER BY 7 DESC
 
---DETERMINE ICU ADMISSION RATE
+-- TABLE A4 - Figure showing Total Cases, icu_patients and icu_rate by Top 20 Countries
+-- Notice the date conditional formatting below. This had to be included as there was some discrepancies in the data from dates occurring early on in the pandemic.
+-- The 'highest_recorded_icu_rate' is calculated by observing the day in which the ration between icu_patients and total_cases was at its maximum.
+SELECT location, 
+max(date) as latest_date, 
+sum(new_cases) as total_cases, 
+max(icu_patients) as icu_patients, 
+ROUND(max(100 * (icu_patients) * (total_cases)^(-1)),2) as highest_recorded_icu_rate  FROM owid_covid_table
+WHERE continent != '0' AND total_cases > 0 AND date > '2020-07-01'
+GROUP BY location
+ORDER BY 5 DESC
+LIMIT 20
 
-SELECT location, date, total_cases, icu_patients, 100 * icu_patients * total_cases^(-1) AS icu_rate
-FROM covid_data
-WHERE icu_patients IS NOT null AND continent IS NOT null
-ORDER BY 1,2
+-- TABLE A5 - Figure showing accumilating testing numbers for top 15 countries with the highest case numbers
+-- Table can be used to plot the testing rates as the pandemic raged on in the most affected countries.
+-- Notice a CTE had to be used to ensure that the result was filtered by top 15 countries with highest case numbers.
+SELECT location, date, sum(new_tests) OVER (PARTITION by location ORDER BY location, date) as total_new_tests
+FROM owid_covid_table
+WHERE continent != '0' AND new_tests > 0 AND location IN
 
---DETERMINE TESTING PER COUNTRY BUT ONLY FOR 15 COUNTRIES WITH THE HIGHEST NUMBER OF CASES
+--USING CTE
 
-SELECT location, date, SUM(new_tests) OVER (PARTITION by location ORDER BY location, date) as total_new_tests
-FROM covid_data
-WHERE icu_patients IS NOT null AND continent IS NOT null AND location IN
+(WITH Top_15_Countries_Case(location, total_cases)
+as
+(
+SELECT location, sum(new_cases) FROM owid_covid_table
+WHERE continent != '0'
+GROUP BY location
+ORDER BY 2 DESC
+LIMIT 15
+)
+SELECT location FROM Top_15_Countries_Case)
+
+-- TABLE A6 - Figure showing accumilating vaccination numbers for countries who are in the top 15 highest case_numbers
+-- Table can be used to plot the vaccination rates as the pandemic raged on in the most affected countries.
+SELECT location, date, sum(new_vaccinations) OVER (PARTITION by location ORDER BY location, date) as total_vaccinations
+FROM owid_covid_table
+WHERE continent != '0' AND new_vaccinations > 0 AND location IN
 
 --USING CTE
 
 (WITH Top_15_Countries_Case(location, total_cases)
 AS
 (
-SELECT location, SUM(new_cases) FROM covid_data
-WHERE continent IS NOT null
+SELECT location, sum(new_cases) FROM owid_covid_table
+WHERE continent != '0'
 GROUP BY location
-HAVING AVG(total_cases) IS NOT null
 ORDER BY 2 DESC
 LIMIT 15
 )
-
 SELECT location FROM Top_15_Countries_Case)
 
---DETERMINE TOTAL CASES AND VACCINATION RATES
-
-SELECT location, date, new_cases, 100 * total_vaccinations * population ^ (-1) AS vaccination_rate
-FROM covid_data
-WHERE icu_patients IS NOT null AND continent IS NOT null AND location IN
-
---USING CTE
-
-(WITH Top_15_Countries_Case(location, total_cases)
-AS
-(
-SELECT location, SUM(new_cases) FROM covid_data
-WHERE continent IS NOT null
-GROUP BY location
-HAVING AVG(total_cases) IS NOT null
-ORDER BY 2 DESC
-LIMIT 15
-)
-
-SELECT location FROM Top_15_Countries_Case)
+-- END
 
